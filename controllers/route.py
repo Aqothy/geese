@@ -1,26 +1,10 @@
-"""
-Trading Platform API Routes
-
-This module defines the REST API endpoints for the trading platform.
-It handles HTTP requests and responses, input validation, and
-coordinates with the trading module for business logic.
-
-API Structure:
-- User Management: Initialize user, login
-- Trading Operations: Buy/sell stocks
-- Portfolio Management: View portfolio, get stock prices
-- Market Data: S&P 500 data, batch price requests
-
-All endpoints return JSON responses with appropriate HTTP status codes.
-Error handling is implemented consistently across all routes.
-"""
-
 from flask import Blueprint, request, jsonify
 import yfinance as yf
+from app import collection
 from utils import fetch_sp500_data
 from trading import (
     initialize_user, buy_stock, sell_stock, get_portfolio,
-    update_login_streak, get_stock_price, get_multiple_stock_prices, get_portfolio_with_streak
+    update_login_streak, get_stock_price, get_portfolio_with_streak
 )
 
 # Create a Blueprint for all trading routes
@@ -63,6 +47,7 @@ def stock_data(ticker):
     try:
         stock_info = yf.Ticker(ticker).info
         data = {
+            'Name': stock_info.get('shortName'),
             'Bid': stock_info.get('bid'),
             'Ask': stock_info.get('ask'),
             'Open': stock_info.get('regularMarketOpen'),
@@ -94,10 +79,13 @@ def init_user():
     Status Codes:
         200: User initialized successfully
     """
+    print('init user')
     initialize_user(user_id=1)
     result = get_portfolio(1)
     return jsonify(result)
 
+
+#####
 @index.route('/login', methods=['POST'])
 def login():
     """
@@ -122,33 +110,8 @@ def login():
 
 @index.route('/buy', methods=['POST'])
 def buy():
-    """
-    Buy stocks and get updated portfolio.
-
-    Processes stock purchase:
-    - Validates input parameters
-    - Checks sufficient funds
-    - Executes trade
-    - Updates portfolio
-
-    Request Body:
-        {
-            "symbol": str,    # Stock symbol (e.g., "AAPL")
-            "amount": float,  # Dollar amount to invest (optional)
-            "shares": float   # Number of shares to buy (optional)
-        }
-
-    Returns:
-        JSON response containing:
-        - Transaction details
-        - Updated portfolio
-        - Success/error status
-
-    Status Codes:
-        200: Purchase successful
-        400: Invalid request (missing/invalid parameters)
-    """
     data = request.get_json()
+
     if not data or 'symbol' not in data:
         return jsonify({
             'success': False,
@@ -184,89 +147,23 @@ def buy():
 
     # Get updated portfolio after purchase
     portfolio = get_portfolio(1)
-    
+
     return jsonify({
         'success': True,
         'transaction': result,
         'portfolio': portfolio
     })
 
- 
+@index.route('/portfolio/details')
+def portfolio_details():
+    return jsonify(get_portfolio(1))
 
-@index.route('/stock-price/<symbol>', methods=['GET'])
-def stock_price(symbol):
-    """
-    Get current price for a stock symbol.
 
-    Fetches real-time price data:
-    - Uses caching system
-    - Validates symbol
-    - Handles errors
-
-    URL Parameters:
-        symbol (str): Stock symbol to look up
-
-    Returns:
-        JSON response containing:
-        - Current price
-        - Symbol details
-        - Success/error status
-
-    Status Codes:
-        200: Price retrieved successfully
-        400: Invalid symbol or fetch error
-    """
-    try:
-        price = get_stock_price(symbol)
-        return jsonify({
-            'success': True,
-            'symbol': symbol,
-            'price': price
-        })
-    except ValueError as e:
-        return jsonify({
-            'error': str(e)
-        }), 400
-
-@index.route('/stock-prices', methods=['POST'])
-def batch_stock_prices():
-    """
-    Get current prices for multiple stock symbols.
-
-    Processes batch price requests:
-    - Validates input
-    - Uses caching system
-    - Handles multiple symbols efficiently
-
-    Request Body:
-        {
-            "symbols": list[str]  # List of stock symbols
-        }
-
-    Returns:
-        JSON response containing:
-        - Price data for each symbol
-        - Any errors encountered
-        - Success/error status
-
-    Status Codes:
-        200: Prices retrieved successfully
-        400: Invalid request format
-    """
+@index.route('/sell', methods=['POST'])
+def sell():
     data = request.get_json()
-    if not data or 'symbols' not in data:
-        return jsonify({
-            'error': 'Missing symbols list'
-        }), 400
-
-    symbols = data['symbols']
-    if not isinstance(symbols, list):
-        return jsonify({
-            'error': 'Symbols must be a list'
-        }), 400
-
-    result = get_multiple_stock_prices(symbols)
-    return jsonify(result)
+    return jsonify(sell_stock(1, data['symbol'], float(data['quantity'])))
+#####
 
 @index.route('/')
 def home():

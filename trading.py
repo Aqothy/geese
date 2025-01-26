@@ -1,25 +1,3 @@
-"""
-Trading System Core Module
-
-This module implements the core trading functionality for a stock trading platform.
-It provides functions for user management, portfolio tracking, stock trading operations,
-and market data retrieval.
-
-Key Features:
-- User portfolio management with cash balance tracking
-- Real-time stock price fetching with caching
-- Support for fractional share trading
-- Daily and all-time return calculations
-- Login streak and reward system
-- Comprehensive error handling
-
-Dependencies:
-- yfinance: For real-time stock market data
-- pymongo: For database operations
-- flask: For web framework utilities
-- python-dotenv: For environment variable management
-"""
-
 import yfinance as yf
 from pymongo import MongoClient
 import os
@@ -33,43 +11,35 @@ load_dotenv()
 # Initialize MongoDB connection
 # We use MongoDB to store user portfolios and transaction history
 client = MongoClient(os.getenv('DB_URI'))  # Get MongoDB connection string from environment variables
+print(client)
 db = client['stock_trading']  # Select the stock_trading database
 users_collection = db['users']  # Collection for user data (portfolios, balances)
 stocks_collection = db['stocks']  # Collection for stock-related data (price cache)
 
 def initialize_user(user_id=1):
-    """
-    Initialize a new user in the database with starting cash balance.
-
-    This function creates a new user document if one doesn't exist, setting up:
-    - Initial buying power ($10,000)
-    - Empty portfolio
-    - Login streak tracking
-    - Last login timestamp
-
-    Args:
-        user_id (int): Unique identifier for the user (defaults to 1)
-
-    Database Structure:
-    {
-        'user_id': int,          # Unique identifier for the user
-        'portfolio': [],         # List of stocks owned by user
-        'buying_power': float,   # Available cash for trading
-        'streak': int,          # Current login streak
-        'last_login': datetime, # Last login date
-        'streak_reward_claimed': datetime  # Last date streak reward was claimed
-    }
-    """
+    # Check if the user already exists
     if not users_collection.find_one({'user_id': user_id}):
         current_time = datetime.utcnow()
-        users_collection.insert_one({
+        # Insert the new user
+        result = users_collection.insert_one({
             'user_id': user_id,
-            'portfolio': [],  # Empty portfolio to start
+            'portfolio': [],
             'buying_power': 10000,  # Starting balance of $10,000
             'streak': 0,  # Initialize streak counter
             'last_login': current_time,  # Initialize last login date
             'streak_reward_claimed': None  # Initialize streak reward claim date
         })
+
+        # Check if the user was successfully created
+        if result.inserted_id:
+            print(f"User with user_id {user_id} created successfully! Inserted ID: {result.inserted_id}")
+            return True
+        else:
+            print(f"Failed to create user with user_id {user_id}.")
+            return False
+    else:
+        print(f"User with user_id {user_id} already exists.")
+        return False
 
 def update_login_streak(user_id):
     """
@@ -304,10 +274,10 @@ def buy_stock(user_id, symbol, amount):
         # Get current portfolio and stock data
         portfolio = get_portfolio(user_id)
         stock_price = get_stock_price(symbol)
-        
+
         # Calculate shares based on amount
         shares = amount / stock_price
-        
+
         # Validate buying power
         if amount > portfolio['buying_power']:
             raise ValueError("Insufficient buying power")
@@ -343,7 +313,7 @@ def buy_stock(user_id, symbol, amount):
 
         # Update total portfolio value
         portfolio['total_value'] = (
-            portfolio['buying_power'] + 
+            portfolio['buying_power'] +
             sum(holding['current_value'] for holding in portfolio['portfolio'])
         )
 
@@ -621,32 +591,6 @@ def calculate_all_time_return(user_id):
     }
 
 def get_portfolio(user_id):
-    """
-    Retrieve user's current portfolio with up-to-date market values.
-
-    Provides:
-    - Current position values
-    - Cash balance
-    - Total portfolio value
-    - Performance metrics
-
-    Includes:
-    - Real-time price updates
-    - Daily return calculations
-    - All-time return calculations
-    - Individual position details
-
-    Args:
-        user_id (int): User's unique identifier
-
-    Returns:
-        dict: Comprehensive portfolio information including:
-            - List of stocks owned with current prices
-            - Available buying power
-            - Total portfolio value
-            - Daily performance metrics
-            - All-time performance metrics
-    """
     user = users_collection.find_one({'user_id': user_id})
     if not user:
         return {'error': 'User not found'}
