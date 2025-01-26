@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from pymongo import MongoClient
 import os
 from dotenv import load_dotenv
@@ -6,33 +7,34 @@ from dotenv import load_dotenv
 load_dotenv()
 
 try:
-    # init db here
+    # Initialize MongoDB connection
     uri = os.getenv('DB_URI')
+    if uri is None:
+        raise Exception('DB_URI is not set')
 
-    client = MongoClient(os.getenv('DB_URI'))
-
-    db = client['test']
-
+    client = MongoClient(uri)
+    db = client['stock_trading']
     collection = db['users']
 
 except Exception as e:
     raise e
 
-
 def init_app():
-    try:
-        app = Flask(__name__)
+    """Initialize and configure Flask application"""
+    app = Flask(__name__)
+    CORS(app)  # Enable CORS for all routes
 
+    # Import blueprints here and register routes
+    from controllers.route import index
+    app.register_blueprint(index, url_prefix='/')
 
-        if uri is None:
-            raise Exception('DB_URI is not set')
+    return app
 
-        # import blueprints here and register route
-        from controllers.route import index
-
-        app.register_blueprint(index, url_prefix='/')
-
-        return app
-
-    except Exception as e:
-        print(e)
+def create_app(testing=False):
+    """Create Flask application with optional testing configuration"""
+    app = init_app()
+    
+    if testing:
+        app.config['TESTING'] = True
+    
+    return app
