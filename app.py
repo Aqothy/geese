@@ -1,14 +1,38 @@
 from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
+from pymongo import MongoClient
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+try:
+    # init db here
+    uri = os.getenv('DB_URI')
+
+    client = MongoClient(os.getenv('DB_URI'))
+
+    db = client['test']
+
+    collection = db['users']
+
+except Exception as e:
+    raise e
+
 
 def init_app():
-    app = Flask(__name__)
+    try:
+        app = Flask(__name__)
 
-    # init db here
 
-    # import blueprints here and register route
-    from controllers.route import index
+        if uri is None:
+            raise Exception('DB_URI is not set')
 
-    app.register_blueprint(index, url_prefix='/')
+        # import blueprints here and register route
+        from controllers.route import index
 
-    return app
+        app.register_blueprint(index, url_prefix='/')
+
+        return app
+
+    except Exception as e:
+        print(e)
