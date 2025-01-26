@@ -133,14 +133,15 @@ def buy():
 
     Request Body:
         {
-            "symbol": str,  # Stock symbol (e.g., "AAPL")
-            "amount": float # Dollar amount to invest
+            "symbol": str,    # Stock symbol (e.g., "AAPL")
+            "amount": float,  # Dollar amount to invest (optional)
+            "shares": float   # Number of shares to buy (optional)
         }
 
     Returns:
         JSON response containing:
         - Transaction details
-        - Updated position
+        - Updated portfolio
         - Success/error status
 
     Status Codes:
@@ -148,78 +149,49 @@ def buy():
         400: Invalid request (missing/invalid parameters)
     """
     data = request.get_json()
-    if not data or 'symbol' not in data or 'amount' not in data:
+    if not data or 'symbol' not in data:
         return jsonify({
-            'error': 'Missing symbol or amount'
+            'success': False,
+            'error': 'Missing symbol'
         }), 400
 
-    result = buy_stock(1, data['symbol'], float(data['amount']))
-    if 'error' in result:
-        return jsonify(result), 400
-
-    return jsonify(result)
-
-@index.route('/sell', methods=['POST'])
-def sell():
-    """
-    Sell stocks and get updated portfolio.
-
-    Processes stock sale:
-    - Validates input parameters
-    - Checks sufficient shares
-    - Executes trade
-    - Updates portfolio
-
-    Request Body:
-        {
-            "symbol": str,    # Stock symbol (e.g., "AAPL")
-            "quantity": float # Number of shares to sell
-        }
-
-    Returns:
-        JSON response containing:
-        - Transaction details
-        - Updated position
-        - Success/error status
-
-    Status Codes:
-        200: Sale successful
-        400: Invalid request (missing/invalid parameters)
-    """
-    data = request.get_json()
-    if not data or 'symbol' not in data or 'quantity' not in data:
+    # If amount is provided, use it for dollar-based investing
+    if 'amount' in data:
+        result = buy_stock(1, data['symbol'], float(data['amount']))
+    # Otherwise use shares if provided
+    elif 'shares' in data:
+        # Get current price to calculate amount
+        try:
+            current_price = get_stock_price(data['symbol'])
+            amount = float(data['shares']) * current_price
+            result = buy_stock(1, data['symbol'], amount)
+        except ValueError as e:
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 400
+    else:
         return jsonify({
-            'error': 'Missing symbol or quantity'
+            'success': False,
+            'error': 'Must provide either amount or shares'
         }), 400
 
-    result = sell_stock(1, data['symbol'], float(data['quantity']))
     if 'error' in result:
-        return jsonify(result), 400
+        return jsonify({
+            'success': False,
+            'error': result['error']
+        }), 400
 
-    return jsonify(result)
+    # Get updated portfolio after purchase
+    portfolio = get_portfolio(1)
+    
+    return jsonify({
+        'success': True,
+        'transaction': result,
+        'portfolio': portfolio
+    })
 
-@index.route('/portfolio', methods=['GET'])
-def portfolio():
-    """
-    Get portfolio and streak information.
-
-    Retrieves comprehensive portfolio data:
-    - Current positions
-    - Cash balance
-    - Total value
-    - Performance metrics
-
-    Returns:
-        JSON response containing:
-        - Complete portfolio details
-        - Performance calculations
-        - Success/error status
-
-    Status Codes:
-        200: Portfolio retrieved successfully
-    """
-    result = get_portfolio(1)
-    return jsonify(result)
+ 
 
 @index.route('/stock-price/<symbol>', methods=['GET'])
 def stock_price(symbol):

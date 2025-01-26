@@ -278,109 +278,98 @@ def get_multiple_stock_prices(symbols, max_cache_age_seconds=30):
 
     return {'prices': prices, 'errors': errors}
 
-def buy_stock(user_id, stock_symbol, dollar_amount):
+def buy_stock(user_id, symbol, amount):
     """
     Process a stock purchase order and update the user's portfolio.
 
     Implements dollar-based investing with:
-    - Fractional share support (minimum 0.01 shares)
-    - Automatic position averaging
     - Real-time price fetching
+    - Portfolio position updates
     - Buying power verification
-
-    Transaction Flow:
-    1. Validate dollar amount
-    2. Get current market price
-    3. Calculate shares to buy
-    4. Verify sufficient funds
-    5. Update portfolio and buying power
+    - Transaction tracking
 
     Args:
         user_id (int): User's unique identifier
-        stock_symbol (str): Symbol of stock to buy (e.g., 'AAPL')
-        dollar_amount (float): Amount of money to spend on the stock
+        symbol (str): Symbol of stock to buy (e.g., 'AAPL')
+        amount (float): Amount of money to spend on the stock
 
     Returns:
         dict: Result of the transaction including:
             - success status
-            - shares bought
-            - total cost
-            - price per share
+            - transaction details
+            - updated portfolio
             - error message (if any)
     """
     try:
-        # Validate dollar amount
-        dollar_amount = float(dollar_amount)
-        if dollar_amount <= 0:
-            return {'error': 'Dollar amount must be greater than 0'}
+        # Get current portfolio and stock data
+        portfolio = get_portfolio(user_id)
+        stock_price = get_stock_price(symbol)
+        
+        # Calculate shares based on amount
+        shares = amount / stock_price
+        
+        # Validate buying power
+        if amount > portfolio['buying_power']:
+            raise ValueError("Insufficient buying power")
 
-        # Get current market price
-        current_price = get_stock_price(stock_symbol)
+        # Update buying power
+        portfolio['buying_power'] -= amount
 
-        # Calculate quantity of shares to buy
-        quantity = dollar_amount / current_price
-        # Round to 2 decimal places for fractional shares
-        quantity = round(quantity, 2)
-
-        if quantity < 0.01:
-            return {'error': 'Dollar amount too small to buy minimum share quantity (0.01)'}
-
-        # Recalculate actual cost with rounding
-        total_cost = round(current_price * quantity, 2)
-
-        # Find user and verify funds
-        user = users_collection.find_one({'user_id': user_id})
-        if not user:
-            return {'error': 'User not found'}
-
-        if user['buying_power'] < total_cost:
-            return {'error': 'Insufficient funds'}
-
-        # Update user's portfolio
-        portfolio = user['portfolio']
+        # Update or add stock to portfolio
         stock_found = False
-
-        # Check if user already owns this stock
-        for stock in portfolio:
-            if stock['symbol'] == stock_symbol:
+        for holding in portfolio['portfolio']:
+            if holding['symbol'] == symbol:
                 # Update existing position
-                old_quantity = stock['quantity']
-                old_avg_price = stock['average_price']
-                new_quantity = round(old_quantity + quantity, 2)
-                # Calculate new average price
-                stock['quantity'] = new_quantity
-                stock['average_price'] = round(((old_quantity * old_avg_price) + (quantity * current_price)) / new_quantity, 2)
+                total_value = holding['current_value'] + amount
+                total_shares = holding['quantity'] + shares
+                holding.update({
+                    'quantity': total_shares,
+                    'current_value': total_value,
+                    'average_price': total_value / total_shares,
+                    'current_price': stock_price
+                })
                 stock_found = True
                 break
 
-        # If this is a new stock for the user
         if not stock_found:
-            portfolio.append({
-                'symbol': stock_symbol,
-                'quantity': quantity,
-                'average_price': round(current_price, 2)  # Initial purchase price
+            # Add new position
+            portfolio['portfolio'].append({
+                'symbol': symbol,
+                'quantity': shares,
+                'average_price': stock_price,
+                'current_price': stock_price,
+                'current_value': amount
             })
 
-        # Update user document in database
-        new_buying_power = round(user['buying_power'] - total_cost, 2)
-        users_collection.update_one(
-            {'user_id': user_id},
-            {
-                '$set': {
-                    'portfolio': portfolio,
-                    'buying_power': new_buying_power
-                }
-            }
+        # Update total portfolio value
+        portfolio['total_value'] = (
+            portfolio['buying_power'] + 
+            sum(holding['current_value'] for holding in portfolio['portfolio'])
         )
 
+        # Save updated portfolio
+        users_collection.update_one(
+            {'user_id': user_id},
+            {'$set': portfolio}
+        )
+
+        # Return transaction details and updated portfolio
         return {
             'success': True,
-            'shares_bought': quantity,
-            'cost': total_cost,
-            'price_per_share': round(current_price, 2)
+            'transaction': {
+                'symbol': symbol,
+                'shares_bought': shares,
+                'price_per_share': stock_price,
+                'total_amount': amount
+            },
+            'portfolio': portfolio
         }
-    except ValueError as e:
-        return {'error': str(e)}
+
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
 
 def sell_stock(user_id, stock_symbol, quantity):
     """
