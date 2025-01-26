@@ -30,7 +30,7 @@ def read_tickers_from_file(filename='tickers.txt'):
     with open(filename, 'r') as f:
         return [line.strip() for line in f.readlines()]
 
-def fetch_sp500_data(page=1, per_page=15):
+def fetch_sp500_data(page=1, per_page=10):
     """Fetch data for a paginated chunk of S&P 500 stocks with caching."""
     tickers = read_tickers_from_file()
     total_pages = (503 + per_page - 1) // per_page
