@@ -56,6 +56,7 @@ def fetch_sp500_data(page=1, per_page=10):
         try:
             info = yf.Ticker(ticker).info
             data[ticker] = {
+                'Name': info.get('shortName'),
                 'Bid': info.get('bid'),
                 'Ask': info.get('ask'),
                 'Open': info.get('regularMarketOpen'),
